@@ -23,13 +23,17 @@ def _score_long(a15: dict, a5: dict, oi: dict):
         score += 10
         reasons.append("EMA 21 above EMA 50 — full bullish stack")
 
+    # EMA gap expanding — trend accelerating not fading (5 pts bonus)
+    if a15.get('ema_gap_expanding') and a15['ema9'] > a15['ema21']:
+        score += 5
+        reasons.append("EMA gap widening — bullish momentum accelerating")
+
     # Market structure — 15m (10 pts)
     if a15['market_structure'] == 'BULLISH':
         score += 10
         reasons.append("Bullish market structure (HH / HL)")
 
     # Support proximity — 15m (10 pts)
-    # Price must be above support but NOT pressed against resistance (within 0.5 ATR)
     atr = a15['atr']
     if a15['nearest_support'] and a15['price'] > a15['nearest_support']:
         if a15['nearest_resistance'] and (a15['nearest_resistance'] - a15['price']) < atr * 0.5:
@@ -38,7 +42,7 @@ def _score_long(a15: dict, a5: dict, oi: dict):
             score += 10
             reasons.append(f"Price holding above support {_fmt(a15['nearest_support'])}")
 
-    # RSI — 5m (15 pts): healthy bullish zone only
+    # RSI — 5m (15 pts)
     rsi = a5['rsi']
     if 45 <= rsi <= 70:
         score += 15
@@ -90,6 +94,11 @@ def _score_short(a15: dict, a5: dict, oi: dict):
         score += 10
         reasons.append("EMA 21 below EMA 50 — full bearish stack")
 
+    # EMA gap expanding — trend accelerating not fading (5 pts bonus)
+    if a15.get('ema_gap_expanding') and a15['ema9'] < a15['ema21']:
+        score += 5
+        reasons.append("EMA gap widening — bearish momentum accelerating")
+
     # Market structure — 15m (10 pts)
     if a15['market_structure'] == 'BEARISH':
         score += 10
@@ -104,7 +113,7 @@ def _score_short(a15: dict, a5: dict, oi: dict):
             score += 10
             reasons.append(f"Price capped below resistance {_fmt(a15['nearest_resistance'])}")
 
-    # RSI — 5m (15 pts): healthy bearish zone only
+    # RSI — 5m (15 pts)
     rsi = a5['rsi']
     if 30 <= rsi <= 55:
         score += 15
@@ -150,38 +159,32 @@ _OI_DEFAULT = {'oi': 0.0, 'oi_change_pct': 0.0, 'oi_rising': False, 'oi_falling'
 def _no_trade(symbol: str, a15: dict, a5: dict, reason: str,
               funding_rate: float = 0, oi: dict = None) -> dict:
     return {
-        'symbol': symbol,
-        'signal': 'NO TRADE',
-        'confidence': 0,
-        'entry': a15['price'],
-        'tp1': None, 'tp2': None, 'sl': None,
-        'rr': 'N/A',
-        'trend': a15['market_structure'],
-        'adx': a15['adx'],
-        'macd_cross': a15.get('macd_cross', ''),
-        'rsi': a5['rsi'],
+        'symbol': symbol, 'signal': 'NO TRADE', 'confidence': 0,
+        'entry': a15['price'], 'tp1': None, 'tp2': None, 'sl': None,
+        'rr': 'N/A', 'trend': a15['market_structure'], 'adx': a15['adx'],
+        'macd_cross': a15.get('macd_cross', ''), 'rsi': a5['rsi'],
         'ema9': a15['ema9'], 'ema21': a15['ema21'], 'ema50': a15['ema50'],
-        'volume': a5['volume'],
-        'funding_rate': funding_rate,
+        'volume': a5['volume'], 'funding_rate': funding_rate,
         'oi_change_pct': (oi or _OI_DEFAULT)['oi_change_pct'],
         'oi_rising': (oi or _OI_DEFAULT)['oi_rising'],
         'reasons': [reason],
     }
 
 
-def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None,
+def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
                     funding_rate: float = 0, oi_data: dict = None,
-                    min_confidence: int = 75) -> dict:
+                    min_confidence: int = 80) -> dict:
     a15 = analyze(df_15m)
     a5  = analyze(df_5m) if df_5m is not None else a15
     a1h = analyze(df_1h) if df_1h is not None else None
+    a4h = analyze(df_4h) if df_4h is not None else None
     oi  = oi_data or _OI_DEFAULT
 
     price = a15['price']
     atr   = a15['atr']
     adx   = a15['adx']
 
-    # ADX gate — no trend, no trade
+    # ADX gate
     if adx < 25:
         return _no_trade(symbol, a15, a5,
                          f"ADX at {adx:.1f} — market ranging, no tradeable trend",
@@ -190,39 +193,77 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None,
     long_score,  long_reasons  = _score_long(a15, a5, oi)
     short_score, short_reasons = _score_short(a15, a5, oi)
 
-    # Directional ADX bonus — only boost the direction DI confirms
+    # Directional ADX bonus — only boost direction DI confirms
     if adx > 30:
         if a15['plus_di'] > a15['minus_di']:
             long_score  = min(long_score + 5, 100)
-            long_reasons.append(f"ADX {adx:.1f} strong trend, +DI dominant — bulls in control")
+            long_reasons.append(f"ADX {adx:.1f} strong, +DI dominant — bulls in control")
         else:
             short_score = min(short_score + 5, 100)
-            short_reasons.append(f"ADX {adx:.1f} strong trend, -DI dominant — bears in control")
+            short_reasons.append(f"ADX {adx:.1f} strong, -DI dominant — bears in control")
 
     # Funding rate penalty
     if funding_rate > 0.0005 and long_score >= short_score:
         long_score = max(long_score - 15, 0)
-        long_reasons.append(f"Funding {funding_rate*100:.3f}% — longs paying heavy, confidence reduced")
+        long_reasons.append(f"Funding {funding_rate*100:.3f}% — longs paying heavy")
     if funding_rate < -0.0005 and short_score > long_score:
         short_score = max(short_score - 15, 0)
-        short_reasons.append(f"Funding {funding_rate*100:.3f}% — shorts paying heavy, confidence reduced")
+        short_reasons.append(f"Funding {funding_rate*100:.3f}% — shorts paying heavy")
 
-    # 1H trend filter — block trades against the bigger trend
+    # 4H trend filter — strongest gate
+    if a4h is not None:
+        h4_bullish = a4h['ema9'] > a4h['ema21'] and a4h['ema21'] > a4h['ema50']
+        h4_bearish = a4h['ema9'] < a4h['ema21'] and a4h['ema21'] < a4h['ema50']
+
+        if h4_bearish and long_score > short_score:
+            return _no_trade(symbol, a15, a5,
+                             "4H trend is bearish — LONG blocked",
+                             funding_rate, oi)
+        if h4_bullish and short_score > long_score:
+            return _no_trade(symbol, a15, a5,
+                             "4H trend is bullish — SHORT blocked",
+                             funding_rate, oi)
+
+    # 1H trend filter
     if a1h is not None:
         h1_bullish = a1h['ema9'] > a1h['ema21'] and a1h['ema21'] > a1h['ema50']
         h1_bearish = a1h['ema9'] < a1h['ema21'] and a1h['ema21'] < a1h['ema50']
 
         if h1_bearish and long_score > short_score:
             return _no_trade(symbol, a15, a5,
-                             "1H trend is bearish — LONG blocked to avoid counter-trend trade",
+                             "1H trend is bearish — LONG blocked",
                              funding_rate, oi)
         if h1_bullish and short_score > long_score:
             return _no_trade(symbol, a15, a5,
-                             "1H trend is bullish — SHORT blocked to avoid counter-trend trade",
+                             "1H trend is bullish — SHORT blocked",
+                             funding_rate, oi)
+
+    # Hard momentum gate — must have MACD crossover OR OI rising
+    # Signals without real momentum are just chasing lagging indicators
+    if long_score > short_score:
+        has_momentum = (
+            a15.get('macd_cross') == 'BULL_CROSS' or
+            oi.get('oi_rising') or
+            a15.get('macd_hist_rising')
+        )
+        if not has_momentum:
+            return _no_trade(symbol, a15, a5,
+                             "No momentum confirmation — MACD, OI, and histogram all neutral",
+                             funding_rate, oi)
+
+    if short_score > long_score:
+        has_momentum = (
+            a15.get('macd_cross') == 'BEAR_CROSS' or
+            oi.get('oi_rising') or
+            a15.get('macd_hist_falling')
+        )
+        if not has_momentum:
+            return _no_trade(symbol, a15, a5,
+                             "No momentum confirmation — MACD, OI, and histogram all neutral",
                              funding_rate, oi)
 
     # Weak volume guard
-    if not a5['volume_increasing'] and max(long_score, short_score) < 75:
+    if not a5['volume_increasing'] and max(long_score, short_score) < 80:
         return _no_trade(symbol, a15, a5, "Weak volume — insufficient participation", funding_rate, oi)
 
     if long_score == short_score:
@@ -233,16 +274,11 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None,
         return {
             'symbol': symbol, 'signal': sig, 'confidence': score,
             'entry': price, 'tp1': tp1, 'tp2': tp2, 'sl': sl,
-            'rr': f"1:{rr}",
-            'trend': a15['market_structure'],
-            'adx': adx,
-            'macd_cross': a15.get('macd_cross', ''),
-            'rsi': a5['rsi'],
+            'rr': f"1:{rr}", 'trend': a15['market_structure'], 'adx': adx,
+            'macd_cross': a15.get('macd_cross', ''), 'rsi': a5['rsi'],
             'ema9': a15['ema9'], 'ema21': a15['ema21'], 'ema50': a15['ema50'],
-            'volume': a5['volume'],
-            'funding_rate': funding_rate,
-            'oi_change_pct': oi['oi_change_pct'],
-            'oi_rising': oi['oi_rising'],
+            'volume': a5['volume'], 'funding_rate': funding_rate,
+            'oi_change_pct': oi['oi_change_pct'], 'oi_rising': oi['oi_rising'],
             'reasons': reasons,
         }
 

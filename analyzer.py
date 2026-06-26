@@ -116,8 +116,12 @@ def analyze(df: pd.DataFrame) -> dict:
 
     last     = df.iloc[-1]
     prev     = df.iloc[-2]
-    # Volume average over 20 candles for a more stable baseline
     vol_avg  = df['volume'].rolling(20).mean().iloc[-1]
+
+    # EMA gap: is EMA9-EMA21 widening (trend accelerating) or narrowing (about to reverse)?
+    gap_now  = float(last['ema9']) - float(last['ema21'])
+    gap_prev = float(prev['ema9']) - float(prev['ema21'])
+    ema_gap_expanding = abs(gap_now) > abs(gap_prev)
 
     supports, resistances = _find_pivots(df)
     price = float(last['close'])
@@ -165,4 +169,5 @@ def analyze(df: pd.DataFrame) -> dict:
         'macd_hist_rising':   macd_hist_rising,
         'macd_hist_falling':  macd_hist_falling,
         'macd_cross':         _macd_cross(df['macd'], df['macd_sig']),
+        'ema_gap_expanding':  ema_gap_expanding,
     }

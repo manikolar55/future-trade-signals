@@ -38,6 +38,7 @@ def run_scan() -> None:
                 df_15m = get_ohlcv(symbol, '15m', 150)
                 df_5m  = get_ohlcv(symbol, '5m', 100)
                 df_1h  = get_ohlcv(symbol, '1h', 100)
+                df_4h  = get_ohlcv(symbol, '4h', 60)
 
                 if df_15m is None:
                     continue
@@ -48,7 +49,7 @@ def run_scan() -> None:
 
                 funding_rate = get_funding_rate(symbol)
                 oi_data      = get_open_interest_change(symbol)
-                signal = generate_signal(symbol, df_15m, df_5m, df_1h=df_1h,
+                signal = generate_signal(symbol, df_15m, df_5m, df_1h=df_1h, df_4h=df_4h,
                                          funding_rate=funding_rate,
                                          oi_data=oi_data,
                                          min_confidence=MIN_CONFIDENCE)
