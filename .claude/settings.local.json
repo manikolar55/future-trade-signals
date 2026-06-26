@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Pcomputer\\\\Desktop\\\\future trading\" -Recurse | Where-Object { !$_.PSIsContainer } | Select-Object FullName)",
+      "Bash(python main.py)",
+      "Bash(echo \"PID: $!\")",
+      "PowerShell(Get-Process *)",
+      "PowerShell(netstat *)",
+      "PowerShell(Stop-Process *)"
+    ]
+  }
+}
