@@ -104,6 +104,14 @@ def get_open_interest_change(symbol: str) -> dict:
         return default
 
 
+def get_current_price(symbol: str) -> float | None:
+    try:
+        ticker = get_exchange().fetch_ticker(symbol)
+        return float(ticker['last'])
+    except Exception:
+        return None
+
+
 def get_funding_rate(symbol: str) -> float:
     try:
         ex = get_exchange()

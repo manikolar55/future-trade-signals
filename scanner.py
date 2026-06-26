@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from datetime import datetime
-from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change, sync_time
+from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change, get_current_price, sync_time
 from signal_generator import generate_signal
 from telegram_notifier import send_signal
 from signal_tracker import add_signal, check_outcome
@@ -73,6 +73,14 @@ def run_scan() -> None:
                 msg = f"{symbol}: {e}"
                 scan_errors.append(msg)
                 print(f"  [error] {msg}")
+
+        # Check outcome for monitored coins that weren't in this scan's top 50
+        from signal_tracker import active_signals
+        missed = [sym for sym in list(active_signals.keys()) if sym not in symbols]
+        for sym in missed:
+            price = get_current_price(sym)
+            if price is not None:
+                check_outcome(sym, price)
 
         last_scan_time = datetime.now().isoformat()
         long_c  = sum(1 for s in signals_store.values() if s['signal'] == 'LONG')
