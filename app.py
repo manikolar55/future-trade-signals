@@ -2,6 +2,7 @@ import threading
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 import scanner
+import signal_tracker
 
 app = Flask(__name__)
 CORS(app)
@@ -15,18 +16,21 @@ def index():
 @app.route('/api/signals')
 def get_signals():
     all_signals = list(scanner.signals_store.values())
-    long_count = sum(1 for s in all_signals if s['signal'] == 'LONG')
+    long_count  = sum(1 for s in all_signals if s['signal'] == 'LONG')
     short_count = sum(1 for s in all_signals if s['signal'] == 'SHORT')
     return jsonify({
-        'signals': all_signals,
-        'history': list(scanner.signals_history),
-        'last_scan': scanner.last_scan_time,
+        'signals':     all_signals,
+        'history':     list(scanner.signals_history),
+        'active':      signal_tracker.get_active(),
+        'closed':      signal_tracker.get_closed(),
+        'performance': signal_tracker.get_stats(),
+        'last_scan':   scanner.last_scan_time,
         'is_scanning': scanner.is_scanning,
-        'total': len(all_signals),
-        'long_count': long_count,
+        'total':       len(all_signals),
+        'long_count':  long_count,
         'short_count': short_count,
         'no_trade_count': len(all_signals) - long_count - short_count,
-        'errors': scanner.scan_errors[-5:],
+        'errors':      scanner.scan_errors[-5:],
     })
 
 
@@ -42,7 +46,8 @@ def trigger_scan():
 @app.route('/api/status')
 def status():
     return jsonify({
-        'scanning': scanner.is_scanning,
-        'last_scan': scanner.last_scan_time,
+        'scanning':     scanner.is_scanning,
+        'last_scan':    scanner.last_scan_time,
         'signal_count': len(scanner.signals_store),
+        'performance':  signal_tracker.get_stats(),
     })

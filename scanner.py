@@ -4,10 +4,11 @@ from datetime import datetime
 from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change, sync_time
 from signal_generator import generate_signal
 from telegram_notifier import send_signal
+from signal_tracker import add_signal, check_outcome
 from config import TOP_SYMBOLS, MIN_CONFIDENCE
 
 signals_store: dict = {}
-signals_history: deque = deque(maxlen=100)   # last 100 actionable signals across all scans
+signals_history: deque = deque(maxlen=100)
 last_scan_time: str | None = None
 is_scanning: bool = False
 scan_errors: list = []
@@ -24,7 +25,7 @@ def run_scan() -> None:
     scan_errors = []
     ts = datetime.now().strftime('%H:%M:%S')
     print(f"\n[{ts}] Scan started — fetching top {TOP_SYMBOLS} symbols...")
-    sync_time()   # re-sync clock with Binance every scan to prevent timestamp drift
+    sync_time()
 
     try:
         symbols = get_top_usdt_futures(TOP_SYMBOLS)
@@ -35,10 +36,14 @@ def run_scan() -> None:
         for i, symbol in enumerate(symbols):
             try:
                 df_15m = get_ohlcv(symbol, '15m', 150)
-                df_5m = get_ohlcv(symbol, '5m', 100)
+                df_5m  = get_ohlcv(symbol, '5m', 100)
 
                 if df_15m is None:
                     continue
+
+                # Check if any open signal for this symbol hit TP1 or SL
+                current_price = float(df_15m['close'].iloc[-1])
+                check_outcome(symbol, current_price)
 
                 funding_rate = get_funding_rate(symbol)
                 oi_data      = get_open_interest_change(symbol)
@@ -50,7 +55,9 @@ def run_scan() -> None:
                 signals_store[symbol] = signal
 
                 if signal['signal'] in ('LONG', 'SHORT'):
-                    signals_history.appendleft(dict(signal))   # newest first
+                    add_signal(signal)                          # start monitoring
+                    signals_history.appendleft(dict(signal))
+
                     cache_key = f"{symbol}|{signal['signal']}|{signal['confidence']}"
                     if cache_key not in _sent_cache:
                         if send_signal(signal):
@@ -68,9 +75,9 @@ def run_scan() -> None:
                 print(f"  [error] {msg}")
 
         last_scan_time = datetime.now().isoformat()
-        long_c = sum(1 for s in signals_store.values() if s['signal'] == 'LONG')
+        long_c  = sum(1 for s in signals_store.values() if s['signal'] == 'LONG')
         short_c = sum(1 for s in signals_store.values() if s['signal'] == 'SHORT')
-        print(f"[scanner] Done — {long_c} LONG, {short_c} SHORT, {new_alerts} Telegram alerts sent")
+        print(f"[scanner] Done — {long_c} LONG, {short_c} SHORT, {new_alerts} alerts sent")
 
         if len(_sent_cache) > 500:
             _sent_cache.clear()
