@@ -54,6 +54,7 @@ def update_settings():
     data = request.get_json()
     if 'telegram_enabled' in data:
         telegram_notifier.telegram_enabled = bool(data['telegram_enabled'])
+        telegram_notifier.save_settings()
     return jsonify({'telegram_enabled': telegram_notifier.telegram_enabled})
 
 

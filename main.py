@@ -2,10 +2,13 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from app import app
 from scanner import run_scan
-from telegram_notifier import send_startup
+from signal_tracker import load as load_tracker
+from telegram_notifier import send_startup, load_settings
 from config import SCAN_INTERVAL
 
 if __name__ == '__main__':
+    load_tracker()
+    load_settings()
     send_startup()
 
     scheduler = BackgroundScheduler(daemon=True)

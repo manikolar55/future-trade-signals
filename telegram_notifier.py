@@ -1,8 +1,32 @@
+import json
+import os
 import time
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
+_SETTINGS_FILE = 'settings.json'
 telegram_enabled: bool = True
+
+
+def load_settings():
+    global telegram_enabled
+    if not os.path.exists(_SETTINGS_FILE):
+        return
+    try:
+        with open(_SETTINGS_FILE) as f:
+            d = json.load(f)
+        telegram_enabled = d.get('telegram_enabled', True)
+        print(f"[telegram] Loaded settings — alerts {'ON' if telegram_enabled else 'OFF'}")
+    except Exception as e:
+        print(f"[telegram] Settings load error: {e}")
+
+
+def save_settings():
+    try:
+        with open(_SETTINGS_FILE, 'w') as f:
+            json.dump({'telegram_enabled': telegram_enabled}, f)
+    except Exception as e:
+        print(f"[telegram] Settings save error: {e}")
 
 
 def _fmt(price) -> str:
