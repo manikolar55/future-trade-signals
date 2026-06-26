@@ -16,13 +16,14 @@ def index():
 
 @app.route('/api/signals')
 def get_signals():
-    all_signals = list(scanner.signals_store.values())
-    long_count  = sum(1 for s in all_signals if s['signal'] == 'LONG')
-    short_count = sum(1 for s in all_signals if s['signal'] == 'SHORT')
+    all_signals  = list(scanner.signals_store.values())
+    active       = signal_tracker.get_active()
+    long_count   = sum(1 for s in active if s['signal'] == 'LONG')
+    short_count  = sum(1 for s in active if s['signal'] == 'SHORT')
     return jsonify({
         'signals':     all_signals,
         'history':     list(scanner.signals_history),
-        'active':      signal_tracker.get_active(),
+        'active':      active,
         'closed':      signal_tracker.get_closed(),
         'performance': signal_tracker.get_stats(),
         'last_scan':   scanner.last_scan_time,
