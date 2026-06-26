@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from datetime import datetime
-from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change
+from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change, sync_time
 from signal_generator import generate_signal
 from telegram_notifier import send_signal
 from config import TOP_SYMBOLS, MIN_CONFIDENCE
@@ -24,6 +24,7 @@ def run_scan() -> None:
     scan_errors = []
     ts = datetime.now().strftime('%H:%M:%S')
     print(f"\n[{ts}] Scan started — fetching top {TOP_SYMBOLS} symbols...")
+    sync_time()   # re-sync clock with Binance every scan to prevent timestamp drift
 
     try:
         symbols = get_top_usdt_futures(TOP_SYMBOLS)
@@ -56,7 +57,7 @@ def run_scan() -> None:
                             _sent_cache.add(cache_key)
                             new_alerts += 1
 
-                time.sleep(0.15)
+                time.sleep(0.4)
 
                 if (i + 1) % 10 == 0:
                     print(f"  [{i + 1}/{len(symbols)}] scanned...")
