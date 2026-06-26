@@ -1,8 +1,9 @@
 import threading
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 import scanner
 import signal_tracker
+import telegram_notifier
 
 app = Flask(__name__)
 CORS(app)
@@ -41,6 +42,19 @@ def trigger_scan():
     t = threading.Thread(target=scanner.run_scan, daemon=True)
     t.start()
     return jsonify({'status': 'started'})
+
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    return jsonify({'telegram_enabled': telegram_notifier.telegram_enabled})
+
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    data = request.get_json()
+    if 'telegram_enabled' in data:
+        telegram_notifier.telegram_enabled = bool(data['telegram_enabled'])
+    return jsonify({'telegram_enabled': telegram_notifier.telegram_enabled})
 
 
 @app.route('/api/status')

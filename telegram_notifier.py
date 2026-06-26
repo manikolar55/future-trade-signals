@@ -2,6 +2,8 @@ import time
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
+telegram_enabled: bool = True
+
 
 def _fmt(price) -> str:
     if price is None:
@@ -14,6 +16,9 @@ def _fmt(price) -> str:
 
 
 def _post(text: str) -> bool:
+    if not telegram_enabled:
+        print("[telegram] Notifications disabled — skipping message")
+        return False
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[telegram] Not configured — skipping message")
         return False

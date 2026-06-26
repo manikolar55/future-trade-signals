@@ -71,6 +71,32 @@
   }
   .tb-right { margin-left: auto; font-size: 11px; color: var(--muted); }
 
+  /* SETTINGS PANEL */
+  .settings-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 24px; display: flex; align-items: center; gap: 20px;
+  }
+  .settings-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .toggle-wrap { display: flex; align-items: center; gap: 10px; }
+  .toggle-label { font-size: 12px; color: var(--text); }
+  .toggle {
+    position: relative; display: inline-block; width: 40px; height: 22px;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--border); border-radius: 22px; transition: .2s;
+  }
+  .toggle-slider:before {
+    content: ''; position: absolute; width: 16px; height: 16px;
+    left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--long); }
+  .toggle input:checked + .toggle-slider:before { transform: translateX(18px); }
+  .toggle-status { font-size: 11px; font-weight: 700; }
+  .toggle-status.on  { color: var(--long); }
+  .toggle-status.off { color: var(--muted); }
+
   /* MAIN */
   main { padding: 20px 24px 72px; }
 
@@ -259,6 +285,19 @@
     <option value="symbol">Symbol A–Z</option>
   </select>
   <span class="tb-right" id="scan-timer">Next refresh in 30s</span>
+</div>
+
+<!-- SETTINGS BAR -->
+<div class="settings-bar">
+  <span class="settings-title">Settings</span>
+  <div class="toggle-wrap">
+    <span class="toggle-label">Telegram Alerts</span>
+    <label class="toggle">
+      <input type="checkbox" id="tg-toggle" onchange="toggleTelegram(this.checked)" checked>
+      <span class="toggle-slider"></span>
+    </label>
+    <span class="toggle-status on" id="tg-status">ON</span>
+  </div>
 </div>
 
 <main>
@@ -499,7 +538,34 @@
     }, 1000);
   }
 
+  async function loadSettings() {
+    try {
+      const res  = await fetch('/api/settings');
+      const data = await res.json();
+      const enabled = data.telegram_enabled;
+      document.getElementById('tg-toggle').checked = enabled;
+      const st = document.getElementById('tg-status');
+      st.textContent = enabled ? 'ON' : 'OFF';
+      st.className = 'toggle-status ' + (enabled ? 'on' : 'off');
+    } catch(e) {}
+  }
+
+  async function toggleTelegram(enabled) {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({telegram_enabled: enabled}),
+      });
+      const st = document.getElementById('tg-status');
+      st.textContent = enabled ? 'ON' : 'OFF';
+      st.className = 'toggle-status ' + (enabled ? 'on' : 'off');
+      toast(enabled ? 'Telegram alerts enabled' : 'Telegram alerts disabled');
+    } catch(e) { toast('Failed to update setting', true); }
+  }
+
   fetchSignals();
+  loadSettings();
   startTimer();
 </script>
 </body>
