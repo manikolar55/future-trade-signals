@@ -23,7 +23,7 @@ def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     return macd_line, signal_line, histogram
 
 
-def _macd_cross(macd_line: pd.Series, signal_line: pd.Series, lookback: int = 3) -> str:
+def _macd_cross(macd_line: pd.Series, signal_line: pd.Series, lookback: int = 2) -> str:
     for i in range(-lookback, 0):
         prev = macd_line.iloc[i - 1] - signal_line.iloc[i - 1]
         curr = macd_line.iloc[i] - signal_line.iloc[i]
@@ -40,7 +40,7 @@ def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return tr.ewm(com=period - 1, adjust=True, min_periods=period).mean()
 
 
-def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+def _adx(df: pd.DataFrame, period: int = 14):
     high, low, close = df['high'], df['low'], df['close']
     plus_dm = high.diff()
     minus_dm = -low.diff()
@@ -49,10 +49,11 @@ def _adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     prev_close = close.shift()
     tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
     smooth_tr = tr.ewm(com=period - 1, adjust=True, min_periods=period).mean().replace(0, np.nan)
-    plus_di = 100 * plus_dm.ewm(com=period - 1, adjust=True, min_periods=period).mean() / smooth_tr
+    plus_di  = 100 * plus_dm.ewm(com=period - 1, adjust=True, min_periods=period).mean() / smooth_tr
     minus_di = 100 * minus_dm.ewm(com=period - 1, adjust=True, min_periods=period).mean() / smooth_tr
     dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-    return dx.ewm(com=period - 1, adjust=True, min_periods=period).mean()
+    adx = dx.ewm(com=period - 1, adjust=True, min_periods=period).mean()
+    return adx, plus_di, minus_di
 
 
 def _find_pivots(df: pd.DataFrame, window: int = 5):
@@ -102,40 +103,66 @@ def analyze(df: pd.DataFrame) -> dict:
     df['ema50'] = _ema(df['close'], 50)
     df['rsi']   = _rsi(df['close'])
     df['atr']   = _atr(df)
-    df['adx']   = _adx(df)
+
+    adx_series, plus_di_series, minus_di_series = _adx(df)
+    df['adx']      = adx_series
+    df['plus_di']  = plus_di_series
+    df['minus_di'] = minus_di_series
+
     macd_line, signal_line, histogram = _macd(df['close'])
     df['macd']      = macd_line
     df['macd_sig']  = signal_line
     df['macd_hist'] = histogram
 
-    last = df.iloc[-1]
-    vol_avg = df['volume'].rolling(10).mean().iloc[-1]
+    last     = df.iloc[-1]
+    prev     = df.iloc[-2]
+    # Volume average over 20 candles for a more stable baseline
+    vol_avg  = df['volume'].rolling(20).mean().iloc[-1]
 
     supports, resistances = _find_pivots(df)
     price = float(last['close'])
 
-    nearest_support = max((s for s in supports if s < price), default=None)
+    # Candle body size relative to ATR — filters indecisive candles
+    body_size = abs(float(last['close']) - float(last['open']))
+    atr_val   = float(last['atr']) if not np.isnan(last['atr']) else 1.0
+    is_strong_candle = body_size > (atr_val * 0.3)
+
+    nearest_support    = max((s for s in supports    if s < price), default=None)
     nearest_resistance = min((r for r in resistances if r > price), default=None)
 
+    # MACD histogram direction: is momentum building?
+    hist_curr = float(last['macd_hist'])  if not np.isnan(last['macd_hist'])  else 0.0
+    hist_prev = float(prev['macd_hist'])  if not np.isnan(prev['macd_hist'])  else 0.0
+    macd_hist_rising  = hist_curr > hist_prev and hist_curr > 0
+    macd_hist_falling = hist_curr < hist_prev and hist_curr < 0
+
+    def _safe(val):
+        return float(val) if not np.isnan(val) else 0.0
+
     return {
-        'price': price,
-        'ema9': float(last['ema9']),
-        'ema21': float(last['ema21']),
-        'ema50': float(last['ema50']),
-        'rsi': float(last['rsi']),
-        'atr': float(last['atr']),
-        'volume': float(last['volume']),
-        'volume_avg': float(vol_avg),
-        'volume_increasing': bool(last['volume'] > vol_avg),
-        'is_bull_candle': bool(last['close'] > last['open']),
-        'supports': supports,
-        'resistances': resistances,
-        'nearest_support': nearest_support,
+        'price':              price,
+        'ema9':               _safe(last['ema9']),
+        'ema21':              _safe(last['ema21']),
+        'ema50':              _safe(last['ema50']),
+        'rsi':                _safe(last['rsi']),
+        'atr':                atr_val,
+        'volume':             float(last['volume']),
+        'volume_avg':         float(vol_avg),
+        'volume_increasing':  bool(last['volume'] > vol_avg),
+        'is_bull_candle':     bool(last['close'] > last['open']),
+        'is_strong_candle':   is_strong_candle,
+        'supports':           supports,
+        'resistances':        resistances,
+        'nearest_support':    nearest_support,
         'nearest_resistance': nearest_resistance,
-        'market_structure': _market_structure(df),
-        'adx':       float(last['adx'])      if not np.isnan(last['adx'])      else 0.0,
-        'macd':      float(last['macd'])     if not np.isnan(last['macd'])     else 0.0,
-        'macd_sig':  float(last['macd_sig']) if not np.isnan(last['macd_sig']) else 0.0,
-        'macd_hist': float(last['macd_hist'])if not np.isnan(last['macd_hist'])else 0.0,
-        'macd_cross': _macd_cross(df['macd'], df['macd_sig']),
+        'market_structure':   _market_structure(df),
+        'adx':                _safe(last['adx']),
+        'plus_di':            _safe(last['plus_di']),
+        'minus_di':           _safe(last['minus_di']),
+        'macd':               _safe(last['macd']),
+        'macd_sig':           _safe(last['macd_sig']),
+        'macd_hist':          hist_curr,
+        'macd_hist_rising':   macd_hist_rising,
+        'macd_hist_falling':  macd_hist_falling,
+        'macd_cross':         _macd_cross(df['macd'], df['macd_sig']),
     }

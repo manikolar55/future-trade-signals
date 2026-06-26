@@ -28,39 +28,52 @@ def _score_long(a15: dict, a5: dict, oi: dict):
         score += 10
         reasons.append("Bullish market structure (HH / HL)")
 
-    # Support — 15m (10 pts)
+    # Support proximity — 15m (10 pts)
+    # Price must be above support but NOT pressed against resistance (within 0.5 ATR)
+    atr = a15['atr']
     if a15['nearest_support'] and a15['price'] > a15['nearest_support']:
-        score += 10
-        reasons.append(f"Price holding above support {_fmt(a15['nearest_support'])}")
+        if a15['nearest_resistance'] and (a15['nearest_resistance'] - a15['price']) < atr * 0.5:
+            reasons.append(f"Price too close to resistance {_fmt(a15['nearest_resistance'])} — limited upside")
+        else:
+            score += 10
+            reasons.append(f"Price holding above support {_fmt(a15['nearest_support'])}")
 
-    # RSI — 5m (15 pts)
-    if a5['rsi'] > 50:
+    # RSI — 5m (15 pts): healthy bullish zone only
+    rsi = a5['rsi']
+    if 45 <= rsi <= 70:
         score += 15
-        reasons.append(f"5m RSI at {a5['rsi']:.1f} — bullish momentum")
+        reasons.append(f"5m RSI at {rsi:.1f} — bullish momentum, not overbought")
+    elif rsi > 70:
+        reasons.append(f"5m RSI at {rsi:.1f} — overbought, LONG risky")
+    else:
+        reasons.append(f"5m RSI at {rsi:.1f} — weak momentum")
 
-    # Volume — 5m (15 pts)
-    if a5['volume_increasing'] and a5['is_bull_candle']:
+    # Volume + candle body — 5m (15 pts)
+    if a5['volume_increasing'] and a5['is_bull_candle'] and a5['is_strong_candle']:
         score += 15
-        reasons.append("5m volume above average on bullish candle")
-    elif a5['volume_increasing']:
+        reasons.append("5m strong bullish candle with above-average volume")
+    elif a5['volume_increasing'] and a5['is_bull_candle']:
         score += 8
-        reasons.append("5m volume above average (neutral candle)")
+        reasons.append("5m bullish candle with above-average volume")
+    elif a5['volume_increasing']:
+        score += 3
+        reasons.append("5m volume above average (indecisive candle)")
 
-    # MACD — 15m (15 pts for crossover, 8 for position)
+    # MACD — 15m (15 pts crossover, 8 pts histogram building)
     cross = a15.get('macd_cross', 'BEAR')
     if cross == 'BULL_CROSS':
         score += 15
         reasons.append("MACD bullish crossover on 15m — momentum shift confirmed")
-    elif cross == 'BULL':
+    elif a15.get('macd_hist_rising'):
         score += 8
-        reasons.append(f"MACD above signal line (histogram {a15['macd_hist']:+.4f})")
+        reasons.append(f"MACD histogram building bullish momentum ({a15['macd_hist']:+.4f})")
 
     # Open Interest (10 pts)
     if oi.get('oi_rising'):
         score += 10
         reasons.append(f"Open Interest rising +{oi['oi_change_pct']:.2f}% — real buyers entering")
     elif oi.get('oi_falling'):
-        reasons.append(f"Open Interest falling {oi['oi_change_pct']:.2f}% — possible liquidation move, caution")
+        reasons.append(f"Open Interest falling {oi['oi_change_pct']:.2f}% — possible liquidation, caution")
 
     return min(score, 100), reasons
 
@@ -82,39 +95,51 @@ def _score_short(a15: dict, a5: dict, oi: dict):
         score += 10
         reasons.append("Bearish market structure (LH / LL)")
 
-    # Resistance — 15m (10 pts)
+    # Resistance proximity — 15m (10 pts)
+    atr = a15['atr']
     if a15['nearest_resistance'] and a15['price'] < a15['nearest_resistance']:
-        score += 10
-        reasons.append(f"Price capped below resistance {_fmt(a15['nearest_resistance'])}")
+        if a15['nearest_support'] and (a15['price'] - a15['nearest_support']) < atr * 0.5:
+            reasons.append(f"Price too close to support {_fmt(a15['nearest_support'])} — limited downside")
+        else:
+            score += 10
+            reasons.append(f"Price capped below resistance {_fmt(a15['nearest_resistance'])}")
 
-    # RSI — 5m (15 pts)
-    if a5['rsi'] < 50:
+    # RSI — 5m (15 pts): healthy bearish zone only
+    rsi = a5['rsi']
+    if 30 <= rsi <= 55:
         score += 15
-        reasons.append(f"5m RSI at {a5['rsi']:.1f} — bearish momentum")
+        reasons.append(f"5m RSI at {rsi:.1f} — bearish momentum, not oversold")
+    elif rsi < 30:
+        reasons.append(f"5m RSI at {rsi:.1f} — oversold, SHORT risky")
+    else:
+        reasons.append(f"5m RSI at {rsi:.1f} — weak bearish momentum")
 
-    # Volume — 5m (15 pts)
-    if a5['volume_increasing'] and not a5['is_bull_candle']:
+    # Volume + candle body — 5m (15 pts)
+    if a5['volume_increasing'] and not a5['is_bull_candle'] and a5['is_strong_candle']:
         score += 15
-        reasons.append("5m volume above average on bearish candle")
-    elif a5['volume_increasing']:
+        reasons.append("5m strong bearish candle with above-average volume")
+    elif a5['volume_increasing'] and not a5['is_bull_candle']:
         score += 8
-        reasons.append("5m volume above average (neutral candle)")
+        reasons.append("5m bearish candle with above-average volume")
+    elif a5['volume_increasing']:
+        score += 3
+        reasons.append("5m volume above average (indecisive candle)")
 
-    # MACD — 15m (15 pts for crossover, 8 for position)
+    # MACD — 15m (15 pts crossover, 8 pts histogram building)
     cross = a15.get('macd_cross', 'BULL')
     if cross == 'BEAR_CROSS':
         score += 15
         reasons.append("MACD bearish crossover on 15m — momentum shift confirmed")
-    elif cross == 'BEAR':
+    elif a15.get('macd_hist_falling'):
         score += 8
-        reasons.append(f"MACD below signal line (histogram {a15['macd_hist']:+.4f})")
+        reasons.append(f"MACD histogram building bearish momentum ({a15['macd_hist']:+.4f})")
 
     # Open Interest (10 pts)
     if oi.get('oi_rising'):
         score += 10
         reasons.append(f"Open Interest rising +{oi['oi_change_pct']:.2f}% — real sellers entering")
     elif oi.get('oi_falling'):
-        reasons.append(f"Open Interest falling {oi['oi_change_pct']:.2f}% — possible liquidation move, caution")
+        reasons.append(f"Open Interest falling {oi['oi_change_pct']:.2f}% — possible liquidation, caution")
 
     return min(score, 100), reasons
 
@@ -144,11 +169,12 @@ def _no_trade(symbol: str, a15: dict, a5: dict, reason: str,
     }
 
 
-def generate_signal(symbol: str, df_15m, df_5m=None,
+def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None,
                     funding_rate: float = 0, oi_data: dict = None,
-                    min_confidence: int = 70) -> dict:
+                    min_confidence: int = 75) -> dict:
     a15 = analyze(df_15m)
     a5  = analyze(df_5m) if df_5m is not None else a15
+    a1h = analyze(df_1h) if df_1h is not None else None
     oi  = oi_data or _OI_DEFAULT
 
     price = a15['price']
@@ -156,7 +182,7 @@ def generate_signal(symbol: str, df_15m, df_5m=None,
     adx   = a15['adx']
 
     # ADX gate — no trend, no trade
-    if adx < 20:
+    if adx < 25:
         return _no_trade(symbol, a15, a5,
                          f"ADX at {adx:.1f} — market ranging, no tradeable trend",
                          funding_rate, oi)
@@ -164,10 +190,14 @@ def generate_signal(symbol: str, df_15m, df_5m=None,
     long_score,  long_reasons  = _score_long(a15, a5, oi)
     short_score, short_reasons = _score_short(a15, a5, oi)
 
-    # ADX strength bonus
-    if adx > 25:
-        long_score  = min(long_score  + 5, 100)
-        short_score = min(short_score + 5, 100)
+    # Directional ADX bonus — only boost the direction DI confirms
+    if adx > 30:
+        if a15['plus_di'] > a15['minus_di']:
+            long_score  = min(long_score + 5, 100)
+            long_reasons.append(f"ADX {adx:.1f} strong trend, +DI dominant — bulls in control")
+        else:
+            short_score = min(short_score + 5, 100)
+            short_reasons.append(f"ADX {adx:.1f} strong trend, -DI dominant — bears in control")
 
     # Funding rate penalty
     if funding_rate > 0.0005 and long_score >= short_score:
@@ -177,9 +207,24 @@ def generate_signal(symbol: str, df_15m, df_5m=None,
         short_score = max(short_score - 15, 0)
         short_reasons.append(f"Funding {funding_rate*100:.3f}% — shorts paying heavy, confidence reduced")
 
-    # NO TRADE guards
+    # 1H trend filter — block trades against the bigger trend
+    if a1h is not None:
+        h1_bullish = a1h['ema9'] > a1h['ema21'] and a1h['ema21'] > a1h['ema50']
+        h1_bearish = a1h['ema9'] < a1h['ema21'] and a1h['ema21'] < a1h['ema50']
+
+        if h1_bearish and long_score > short_score:
+            return _no_trade(symbol, a15, a5,
+                             "1H trend is bearish — LONG blocked to avoid counter-trend trade",
+                             funding_rate, oi)
+        if h1_bullish and short_score > long_score:
+            return _no_trade(symbol, a15, a5,
+                             "1H trend is bullish — SHORT blocked to avoid counter-trend trade",
+                             funding_rate, oi)
+
+    # Weak volume guard
     if not a5['volume_increasing'] and max(long_score, short_score) < 75:
         return _no_trade(symbol, a15, a5, "Weak volume — insufficient participation", funding_rate, oi)
+
     if long_score == short_score:
         return _no_trade(symbol, a15, a5, "Conflicting indicators — no clear bias", funding_rate, oi)
 
@@ -203,15 +248,15 @@ def generate_signal(symbol: str, df_15m, df_5m=None,
 
     if long_score > short_score and long_score >= min_confidence:
         return _build('LONG', long_score, long_reasons,
-                      sl=price - atr * 1.5,
-                      tp1=price + atr * 2.0,
-                      tp2=price + atr * 3.5)
+                      sl=price - atr * 2.0,
+                      tp1=price + atr * 3.0,
+                      tp2=price + atr * 5.0)
 
     if short_score > long_score and short_score >= min_confidence:
         return _build('SHORT', short_score, short_reasons,
-                      sl=price + atr * 1.5,
-                      tp1=price - atr * 2.0,
-                      tp2=price - atr * 3.5)
+                      sl=price + atr * 2.0,
+                      tp1=price - atr * 3.0,
+                      tp2=price - atr * 5.0)
 
     return _no_trade(symbol, a15, a5,
                      f"Confidence below {min_confidence}% — skipped for capital protection",

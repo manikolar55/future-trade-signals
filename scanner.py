@@ -37,6 +37,7 @@ def run_scan() -> None:
             try:
                 df_15m = get_ohlcv(symbol, '15m', 150)
                 df_5m  = get_ohlcv(symbol, '5m', 100)
+                df_1h  = get_ohlcv(symbol, '1h', 100)
 
                 if df_15m is None:
                     continue
@@ -47,7 +48,7 @@ def run_scan() -> None:
 
                 funding_rate = get_funding_rate(symbol)
                 oi_data      = get_open_interest_change(symbol)
-                signal = generate_signal(symbol, df_15m, df_5m,
+                signal = generate_signal(symbol, df_15m, df_5m, df_1h=df_1h,
                                          funding_rate=funding_rate,
                                          oi_data=oi_data,
                                          min_confidence=MIN_CONFIDENCE)
@@ -55,7 +56,9 @@ def run_scan() -> None:
                 signals_store[symbol] = signal
 
                 if signal['signal'] in ('LONG', 'SHORT'):
-                    add_signal(signal)                          # start monitoring
+                    from signal_tracker import active_signals as _active
+                    if symbol not in _active:                   # don't overwrite existing entry
+                        add_signal(signal)
                     signals_history.appendleft(dict(signal))
 
                     cache_key = f"{symbol}|{signal['signal']}|{signal['confidence']}"
