@@ -59,6 +59,16 @@ def update_settings():
     return jsonify({'telegram_enabled': telegram_notifier.telegram_enabled})
 
 
+@app.route('/api/logs')
+def get_logs():
+    try:
+        with open('scanner.log', 'r') as f:
+            lines = f.readlines()
+        return jsonify({'logs': lines[-200:]})
+    except FileNotFoundError:
+        return jsonify({'logs': []})
+
+
 @app.route('/api/status')
 def status():
     return jsonify({
