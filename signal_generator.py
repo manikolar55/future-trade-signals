@@ -128,9 +128,9 @@ def _score_short(a15: dict, a5: dict, oi: dict):
     elif bp < 0.15:
         reasons.append(f"Price near BB lower band ({bp:.2f}) — extended down, SHORT risky")
 
-    # RSI — 5m (15 pts)
+    # RSI — 5m (15 pts): must be clearly bearish, not borderline
     rsi = a5['rsi']
-    if 35 <= rsi <= 55:
+    if 35 <= rsi <= 52:
         score += 15
         reasons.append(f"5m RSI at {rsi:.1f} — healthy bearish zone")
     elif 30 <= rsi < 35:
@@ -139,7 +139,7 @@ def _score_short(a15: dict, a5: dict, oi: dict):
     elif rsi < 30:
         reasons.append(f"5m RSI at {rsi:.1f} — oversold, SHORT risky")
     else:
-        reasons.append(f"5m RSI at {rsi:.1f} — weak bearish momentum")
+        reasons.append(f"5m RSI at {rsi:.1f} — not bearish enough for SHORT")
 
     # Stochastic — 5m (10 pts)
     if a5['stoch_bear_cross'] and a5['stoch_k'] > 40:
@@ -242,14 +242,16 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
         short_score = max(short_score - 15, 0)
         short_reasons.append(f"Funding {funding_rate*100:.3f}% — shorts paying heavy")
 
-    # Hard BB gate — block entries at band extremes
-    if long_score > short_score and a15['bb_position'] > 0.85:
+    # Hard BB gate — only trade from the correct side of the band
+    # LONG: price must be in lower half (room to rise). Block if above 0.75
+    if long_score > short_score and a15['bb_position'] > 0.75:
         return _no_trade(symbol, a15, a5,
-                         f"Price at BB upper band ({a15['bb_position']:.2f}) — LONG blocked, extended",
+                         f"Price in BB upper zone ({a15['bb_position']:.2f}) — LONG blocked, limited upside",
                          funding_rate, oi)
-    if short_score > long_score and a15['bb_position'] < 0.15:
+    # SHORT: price must be in upper half (room to fall). Block if below 0.30
+    if short_score > long_score and a15['bb_position'] < 0.30:
         return _no_trade(symbol, a15, a5,
-                         f"Price at BB lower band ({a15['bb_position']:.2f}) — SHORT blocked, extended",
+                         f"Price in BB lower zone ({a15['bb_position']:.2f}) — SHORT blocked, limited downside",
                          funding_rate, oi)
 
     # Hard OBV divergence gate — block trades where volume contradicts price
