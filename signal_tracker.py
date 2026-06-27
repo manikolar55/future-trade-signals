@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 from datetime import datetime
+
+log = logging.getLogger(__name__)
 
 _DATA_FILE = 'data.json'
 
@@ -20,7 +23,7 @@ def _save():
                 'losses':  loss_count,
             }, f)
     except Exception as e:
-        print(f"[tracker] Save error: {e}")
+        log.error(f"[tracker] Save error: {e}")
 
 
 def load():
@@ -34,9 +37,9 @@ def load():
         closed_signals = d.get('closed', [])
         win_count      = d.get('wins', 0)
         loss_count     = d.get('losses', 0)
-        print(f"[tracker] Loaded {len(active_signals)} active, {len(closed_signals)} closed signals from disk")
+        log.info(f"[tracker] Loaded {len(active_signals)} active, {len(closed_signals)} closed signals from disk")
     except Exception as e:
-        print(f"[tracker] Load error: {e}")
+        log.error(f"[tracker] Load error: {e}")
 
 
 def add_signal(signal: dict):
@@ -88,7 +91,7 @@ def check_outcome(symbol: str, current_price: float) -> str | None:
 
         total = win_count + loss_count
         rate  = round(win_count / total * 100, 1) if total else 0
-        print(f"[tracker] {symbol} {signal['signal']} → {outcome} @ {current_price} | Win rate: {rate}%")
+        log.info(f"[tracker] {symbol} {signal['signal']} → {outcome} @ {current_price} | Win rate: {rate}%")
         _save()
 
     return outcome

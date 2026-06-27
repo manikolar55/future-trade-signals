@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import deque
 from datetime import datetime
@@ -6,6 +7,8 @@ from signal_generator import generate_signal
 from telegram_notifier import send_signal
 from signal_tracker import add_signal, check_outcome
 from config import TOP_SYMBOLS, MIN_CONFIDENCE
+
+log = logging.getLogger(__name__)
 
 signals_store: dict = {}
 signals_history: deque = deque(maxlen=100)
@@ -23,13 +26,12 @@ def run_scan() -> None:
 
     is_scanning = True
     scan_errors = []
-    ts = datetime.now().strftime('%H:%M:%S')
-    print(f"\n[{ts}] Scan started — fetching top {TOP_SYMBOLS} symbols...")
+    log.info(f"=== Scan started — fetching top {TOP_SYMBOLS} symbols ===")
     sync_time()
 
     try:
         symbols = get_top_usdt_futures(TOP_SYMBOLS)
-        print(f"[scanner] Got {len(symbols)} symbols")
+        log.info(f"[scanner] Got {len(symbols)} symbols")
 
         new_alerts = 0
 
@@ -43,7 +45,6 @@ def run_scan() -> None:
                 if df_15m is None:
                     continue
 
-                # Check if any open signal for this symbol hit TP1 or SL
                 current_price = float(df_15m['close'].iloc[-1])
                 check_outcome(symbol, current_price)
 
@@ -56,9 +57,16 @@ def run_scan() -> None:
                 signal['timestamp'] = datetime.now().isoformat()
                 signals_store[symbol] = signal
 
+                sym_short = symbol.split('/')[0]
+
                 if signal['signal'] in ('LONG', 'SHORT'):
+                    log.info(f"  *** {sym_short} {signal['signal']} | conf={signal['confidence']}% | "
+                             f"entry={signal['entry']} tp1={signal['tp1']} sl={signal['sl']} | "
+                             f"rsi={signal['rsi']:.1f} adx={signal['adx']:.1f} bb={signal.get('bb_position', 0):.2f} | "
+                             f"reasons: {' / '.join(signal['reasons'])}")
+
                     from signal_tracker import active_signals as _active
-                    if symbol not in _active:                   # don't overwrite existing entry
+                    if symbol not in _active:
                         add_signal(signal)
                     signals_history.appendleft(dict(signal))
 
@@ -67,18 +75,17 @@ def run_scan() -> None:
                         if send_signal(signal):
                             _sent_cache.add(cache_key)
                             new_alerts += 1
+                else:
+                    log.info(f"  {sym_short} NO TRADE — {signal['reasons'][0]}")
 
                 time.sleep(0.4)
-
-                if (i + 1) % 10 == 0:
-                    print(f"  [{i + 1}/{len(symbols)}] scanned...")
 
             except Exception as e:
                 msg = f"{symbol}: {e}"
                 scan_errors.append(msg)
-                print(f"  [error] {msg}")
+                log.error(f"  [error] {msg}")
 
-        # Check outcome for monitored coins that weren't in this scan's top 50
+        # Check monitored coins not in current scan
         from signal_tracker import active_signals
         missed = [sym for sym in list(active_signals.keys()) if sym not in symbols]
         for sym in missed:
@@ -89,13 +96,13 @@ def run_scan() -> None:
         last_scan_time = datetime.now().isoformat()
         long_c  = sum(1 for s in signals_store.values() if s['signal'] == 'LONG')
         short_c = sum(1 for s in signals_store.values() if s['signal'] == 'SHORT')
-        print(f"[scanner] Done — {long_c} LONG, {short_c} SHORT, {new_alerts} alerts sent")
+        log.info(f"=== Scan done — {long_c} LONG, {short_c} SHORT, {new_alerts} alerts sent ===")
 
         if len(_sent_cache) > 500:
             _sent_cache.clear()
 
     except Exception as e:
-        print(f"[scanner] Fatal: {e}")
+        log.error(f"[scanner] Fatal: {e}")
         scan_errors.append(str(e))
     finally:
         is_scanning = False
