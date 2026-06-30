@@ -97,6 +97,20 @@
   .toggle-status.on  { color: var(--long); }
   .toggle-status.off { color: var(--muted); }
 
+  .danger-btn {
+    padding: 6px 13px; border-radius: 4px; border: 1px solid var(--short);
+    background: transparent; color: var(--short); font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  .danger-btn:hover { background: rgba(239,83,80,.1); }
+  .warn-btn {
+    padding: 6px 13px; border-radius: 4px; border: 1px solid var(--yellow);
+    background: transparent; color: var(--yellow); font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: background .15s;
+  }
+  .warn-btn:hover { background: rgba(240,185,11,.1); }
+  .settings-sep { width: 1px; height: 24px; background: var(--border); margin: 0 6px; }
+
   /* MAIN */
   main { padding: 20px 24px 72px; }
 
@@ -298,6 +312,13 @@
     </label>
     <span class="toggle-status on" id="tg-status">ON</span>
   </div>
+  <div class="settings-sep"></div>
+  <button class="warn-btn" onclick="expireOld()" title="Remove signals open longer than 3 days (not counted as WIN or LOSS)">
+    Clear Stale Signals (&gt;3d)
+  </button>
+  <button class="danger-btn" onclick="resetAll()" title="Erase ALL signals and stats — fresh start">
+    Reset All Stats
+  </button>
 </div>
 
 <main>
@@ -562,6 +583,30 @@
       st.className = 'toggle-status ' + (enabled ? 'on' : 'off');
       toast(enabled ? 'Telegram alerts enabled' : 'Telegram alerts disabled');
     } catch(e) { toast('Failed to update setting', true); }
+  }
+
+  async function expireOld() {
+    if (!confirm('Remove all signals open longer than 3 days?\nThey will NOT be counted as WIN or LOSS.')) return;
+    try {
+      const res = await fetch('/api/expire', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({hours: 72}),
+      });
+      const d = await res.json();
+      toast(d.expired > 0 ? `Removed ${d.expired} stale signal(s)` : 'No stale signals found');
+      fetchSignals();
+    } catch { toast('Failed', true); }
+  }
+
+  async function resetAll() {
+    if (!confirm('RESET ALL STATS?\n\nThis will erase every signal, WIN, and LOSS permanently.')) return;
+    if (!confirm('Are you absolutely sure? This cannot be undone.')) return;
+    try {
+      await fetch('/api/reset', {method: 'POST'});
+      toast('Stats reset — fresh start');
+      fetchSignals();
+    } catch { toast('Failed', true); }
   }
 
   fetchSignals();

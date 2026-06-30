@@ -69,6 +69,20 @@ def get_logs():
         return jsonify({'logs': []})
 
 
+@app.route('/api/reset', methods=['POST'])
+def reset_stats():
+    signal_tracker.reset_all()
+    return jsonify({'status': 'reset'})
+
+
+@app.route('/api/expire', methods=['POST'])
+def expire_old():
+    data  = request.get_json() or {}
+    hours = int(data.get('hours', 72))
+    count = signal_tracker.expire_old_signals(hours)
+    return jsonify({'status': 'ok', 'expired': count})
+
+
 @app.route('/api/status')
 def status():
     return jsonify({

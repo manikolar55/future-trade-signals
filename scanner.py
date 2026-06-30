@@ -5,7 +5,7 @@ from datetime import datetime
 from binance_client import get_top_usdt_futures, get_ohlcv, get_funding_rate, get_open_interest_change, get_current_price, sync_time
 from signal_generator import generate_signal
 from telegram_notifier import send_signal
-from signal_tracker import add_signal, check_outcome
+from signal_tracker import add_signal, check_outcome, expire_old_signals
 from config import TOP_SYMBOLS, MIN_CONFIDENCE
 
 log = logging.getLogger(__name__)
@@ -28,6 +28,10 @@ def run_scan() -> None:
     scan_errors = []
     log.info(f"=== Scan started — fetching top {TOP_SYMBOLS} symbols ===")
     sync_time()
+
+    expired = expire_old_signals(72)  # drop signals open >3 days
+    if expired:
+        log.info(f"[scanner] Expired {expired} stale signal(s) older than 72h")
 
     try:
         symbols = get_top_usdt_futures(TOP_SYMBOLS)

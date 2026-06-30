@@ -108,6 +108,37 @@ def get_stats() -> dict:
     }
 
 
+def expire_old_signals(max_age_hours: int = 72) -> int:
+    """Remove signals older than max_age_hours without counting as WIN or LOSS."""
+    now = datetime.now()
+    expired = []
+    for symbol, signal in list(active_signals.items()):
+        open_time = signal.get('open_time') or signal.get('timestamp')
+        if open_time:
+            try:
+                age_hours = (now - datetime.fromisoformat(open_time)).total_seconds() / 3600
+                if age_hours > max_age_hours:
+                    expired.append(symbol)
+            except Exception:
+                pass
+    for symbol in expired:
+        log.info(f"[tracker] {symbol} EXPIRED (>{max_age_hours}h) — removed from monitoring, not counted")
+        del active_signals[symbol]
+    if expired:
+        _save()
+    return len(expired)
+
+
+def reset_all():
+    global active_signals, closed_signals, win_count, loss_count
+    active_signals = {}
+    closed_signals = []
+    win_count = 0
+    loss_count = 0
+    _save()
+    log.info("[tracker] All signals and stats reset")
+
+
 def get_active() -> list:
     return list(active_signals.values())
 
