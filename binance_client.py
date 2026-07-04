@@ -1,7 +1,10 @@
+import logging
 import time
 import ccxt
 import pandas as pd
 from config import BINANCE_API_KEY, BINANCE_API_SECRET
+
+log = logging.getLogger(__name__)
 
 _exchange = None
 
@@ -39,7 +42,7 @@ def get_top_usdt_futures(limit=50):
             if m.get('settle') == 'USDT' and m.get('type') == 'swap' and m.get('active', True)
         ]
 
-        print(f"[binance] Found {len(usdt_symbols)} USDT futures markets")
+        log.info(f"[binance] Found {len(usdt_symbols)} USDT futures markets")
 
         try:
             tickers = ex.fetch_tickers()
@@ -53,12 +56,12 @@ def get_top_usdt_futures(limit=50):
             if result:
                 return result[:limit]
         except Exception as te:
-            print(f"[binance] Volume sort failed ({te}), using market list order")
+            log.warning(f"[binance] Volume sort failed ({te}), using market list order")
 
         return usdt_symbols[:limit]
 
     except Exception as e:
-        print(f"[binance] Failed to fetch symbols: {e}")
+        log.error(f"[binance] Failed to fetch symbols: {e}")
         return ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'BNB/USDT:USDT', 'SOL/USDT:USDT', 'XRP/USDT:USDT']
 
 
@@ -78,7 +81,7 @@ def get_ohlcv(symbol: str, timeframe: str = '15m', limit: int = 150, retries: in
             if attempt < retries:
                 time.sleep(1.0 * (attempt + 1))   # 1s then 2s backoff
             else:
-                print(f"[binance] OHLCV error {symbol} {timeframe}: {e}")
+                log.error(f"[binance] OHLCV error {symbol} {timeframe}: {e}")
     return None
 
 

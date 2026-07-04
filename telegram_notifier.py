@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import time
 import requests
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MIN_CONFIDENCE
+
+log = logging.getLogger(__name__)
 
 _SETTINGS_FILE = 'settings.json'
 telegram_enabled: bool = True
@@ -16,9 +19,9 @@ def load_settings():
         with open(_SETTINGS_FILE) as f:
             d = json.load(f)
         telegram_enabled = d.get('telegram_enabled', True)
-        print(f"[telegram] Loaded settings — alerts {'ON' if telegram_enabled else 'OFF'}")
+        log.info(f"[telegram] Loaded settings — alerts {'ON' if telegram_enabled else 'OFF'}")
     except Exception as e:
-        print(f"[telegram] Settings load error: {e}")
+        log.error(f"[telegram] Settings load error: {e}")
 
 
 def save_settings():
@@ -26,7 +29,7 @@ def save_settings():
         with open(_SETTINGS_FILE, 'w') as f:
             json.dump({'telegram_enabled': telegram_enabled}, f)
     except Exception as e:
-        print(f"[telegram] Settings save error: {e}")
+        log.error(f"[telegram] Settings save error: {e}")
 
 
 def _fmt(price) -> str:
@@ -41,10 +44,9 @@ def _fmt(price) -> str:
 
 def _post(text: str) -> bool:
     if not telegram_enabled:
-        print("[telegram] Notifications disabled — skipping message")
         return False
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[telegram] Not configured — skipping message")
+        log.warning("[telegram] Not configured — skipping message")
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(3):
@@ -59,7 +61,7 @@ def _post(text: str) -> bool:
             if attempt < 2:
                 time.sleep(2 ** attempt)
             else:
-                print(f"[telegram] Error after 3 attempts: {e}")
+                log.error(f"[telegram] Error after 3 attempts: {e}")
     return False
 
 
@@ -100,5 +102,5 @@ def send_startup() -> None:
     _post(
         "🚀 <b>Futures Signal Scanner is live!</b>\n"
         "Scanning top USDT futures pairs on Binance every 5 minutes.\n"
-        "Only signals with ≥70% confidence will be sent here."
+        f"Only signals with ≥{MIN_CONFIDENCE}% confidence will be sent here."
     )

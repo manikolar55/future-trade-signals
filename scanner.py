@@ -66,15 +66,16 @@ def run_scan() -> None:
                 if signal['signal'] in ('LONG', 'SHORT'):
                     log.info(f"  *** {sym_short} {signal['signal']} | conf={signal['confidence']}% | "
                              f"entry={signal['entry']} tp1={signal['tp1']} sl={signal['sl']} | "
-                             f"rsi={signal['rsi']:.1f} adx={signal['adx']:.1f} bb={signal.get('bb_position', 0):.2f} | "
+                             f"rsi={signal['rsi']:.1f} adx={signal['adx']:.1f} bb={signal.get('bb_position', 0):.2f} bw={signal.get('bb_bandwidth', 0):.3f} | "
                              f"reasons: {' / '.join(signal['reasons'])}")
 
                     from signal_tracker import active_signals as _active
-                    if symbol not in _active:
+                    is_new = symbol not in _active
+                    if is_new:
                         add_signal(signal)
-                    signals_history.appendleft(dict(signal))
+                        signals_history.appendleft(dict(signal))
 
-                    cache_key = f"{symbol}|{signal['signal']}|{signal['confidence']}"
+                    cache_key = f"{symbol}|{signal['signal']}"
                     if cache_key not in _sent_cache:
                         if send_signal(signal):
                             _sent_cache.add(cache_key)
@@ -91,7 +92,9 @@ def run_scan() -> None:
 
         # Check monitored coins not in current scan
         from signal_tracker import active_signals
-        missed = [sym for sym in list(active_signals.keys()) if sym not in symbols]
+        if not symbols:
+            log.warning("[scanner] Empty symbol list — skipping missed-signal checks")
+        missed = [sym for sym in list(active_signals.keys()) if sym not in symbols] if symbols else []
         for sym in missed:
             price = get_current_price(sym)
             if price is not None:
