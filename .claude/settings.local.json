@@ -7,7 +7,8 @@
       "PowerShell(Get-Process *)",
       "PowerShell(netstat *)",
       "PowerShell(Stop-Process *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Pcomputer\\\\Desktop\\\\future trading\" | Where-Object { $_.Name -notmatch \"^\\\\.venv|^__pycache__|^\\\\.idea\" } | Select-Object Name, LastWriteTime | Format-Table)"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Pcomputer\\\\Desktop\\\\future trading\" | Where-Object { $_.Name -notmatch \"^\\\\.venv|^__pycache__|^\\\\.idea\" } | Select-Object Name, LastWriteTime | Format-Table)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

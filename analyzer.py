@@ -204,6 +204,17 @@ def analyze(df: pd.DataFrame) -> dict:
     stoch_bull_cross = (float(prev['stoch_k']) < float(prev['stoch_d'])) and (stoch_k_val >= stoch_d_val)
     stoch_bear_cross = (float(prev['stoch_k']) > float(prev['stoch_d'])) and (stoch_k_val <= stoch_d_val)
 
+    # ADX rising: compare now vs 4 candles ago — trend must be strengthening
+    adx_now  = float(last['adx'])  if not np.isnan(last['adx'])          else 0.0
+    adx_ago  = float(df['adx'].iloc[-5]) if len(df) >= 5 and not np.isnan(df['adx'].iloc[-5]) else adx_now
+    adx_rising = adx_now > adx_ago
+
+    # BB bandwidth: (upper - lower) / mid — low value = squeeze/ranging
+    bb_mid_val   = float(last['bb_mid'])   if not np.isnan(last['bb_mid'])   else 1.0
+    bb_upper_val = float(last['bb_upper']) if not np.isnan(last['bb_upper']) else bb_mid_val
+    bb_lower_val = float(last['bb_lower']) if not np.isnan(last['bb_lower']) else bb_mid_val
+    bb_bandwidth = (bb_upper_val - bb_lower_val) / bb_mid_val if bb_mid_val != 0 else 0.0
+
     def _safe(val):
         return float(val) if not np.isnan(val) else 0.0
 
@@ -225,7 +236,8 @@ def analyze(df: pd.DataFrame) -> dict:
         'nearest_support':     nearest_support,
         'nearest_resistance':  nearest_resistance,
         'market_structure':    _market_structure(df),
-        'adx':                 _safe(last['adx']),
+        'adx':                 adx_now,
+        'adx_rising':          adx_rising,
         'plus_di':             _safe(last['plus_di']),
         'minus_di':            _safe(last['minus_di']),
         'macd':                _safe(last['macd']),
@@ -235,10 +247,11 @@ def analyze(df: pd.DataFrame) -> dict:
         'macd_hist_falling':   macd_hist_falling,
         'macd_cross':          _macd_cross(df['macd'], df['macd_sig']),
         # Bollinger Bands
-        'bb_upper':            _safe(last['bb_upper']),
-        'bb_mid':              _safe(last['bb_mid']),
-        'bb_lower':            _safe(last['bb_lower']),
+        'bb_upper':            bb_upper_val,
+        'bb_mid':              bb_mid_val,
+        'bb_lower':            bb_lower_val,
         'bb_position':         bb_position,
+        'bb_bandwidth':        bb_bandwidth,
         # OBV
         'obv_rising':          obv_rising,
         'obv_falling':         obv_falling,

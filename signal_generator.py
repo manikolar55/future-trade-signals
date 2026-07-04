@@ -216,10 +216,20 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
     atr   = a15['atr']
     adx   = a15['adx']
 
-    # ADX gate — no trend, no trade
-    if adx < 25:
+    # ADX gate — require meaningful, strengthening trend
+    if adx < 28:
         return _no_trade(symbol, a15, a5,
                          f"ADX {adx:.1f} — ranging market, no trade",
+                         funding_rate, oi)
+    if not a15.get('adx_rising') and adx < 35:
+        return _no_trade(symbol, a15, a5,
+                         f"ADX {adx:.1f} declining — trend weakening, no trade",
+                         funding_rate, oi)
+
+    # BB bandwidth gate — squeeze = no real trend, bands must be expanded
+    if a15.get('bb_bandwidth', 1.0) < 0.03:
+        return _no_trade(symbol, a15, a5,
+                         f"BB squeeze (bandwidth {a15.get('bb_bandwidth',0):.3f}) — consolidating, no trade",
                          funding_rate, oi)
 
     long_score,  long_reasons  = _score_long(a15, a5, oi)
@@ -238,7 +248,7 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
     if funding_rate > 0.0005 and long_score >= short_score:
         long_score = max(long_score - 15, 0)
         long_reasons.append(f"Funding {funding_rate*100:.3f}% — longs paying heavy")
-    if funding_rate < -0.0005 and short_score > long_score:
+    if funding_rate < -0.0005 and short_score >= long_score:
         short_score = max(short_score - 15, 0)
         short_reasons.append(f"Funding {funding_rate*100:.3f}% — shorts paying heavy")
 
@@ -324,7 +334,8 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
             'ema9': a15['ema9'], 'ema21': a15['ema21'], 'ema50': a15['ema50'],
             'volume': a5['volume'], 'funding_rate': funding_rate,
             'oi_change_pct': oi['oi_change_pct'], 'oi_rising': oi['oi_rising'],
-            'bb_position': a15['bb_position'],
+            'bb_position':  a15['bb_position'],
+            'bb_bandwidth': a15.get('bb_bandwidth', 0),
             'obv_rising': a15['obv_rising'],
             'stoch_k': a5['stoch_k'],
             'reasons': reasons,
