@@ -127,6 +127,20 @@
     background: var(--border); color: var(--muted);
   }
   .sec-label.monitoring .sec-count { background: rgba(240,185,11,.15); color: var(--yellow); }
+  .sec-label.pending-sec { color: #7c6fcd; }
+  .sec-label.pending-sec .sec-count { background: rgba(124,111,205,.15); color: #7c6fcd; }
+
+  .card.pending {
+    opacity: .85;
+    border-style: dashed;
+    border-color: #7c6fcd;
+  }
+  .card.pending .card-bar { background: #7c6fcd; }
+  .pending-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 10px; color: #7c6fcd; font-weight: 700; letter-spacing: .5px;
+  }
+  .blink { animation: pulse 0.8s infinite; }
 
   /* CARDS GRID */
   .cards-grid {
@@ -223,6 +237,28 @@
   .sig-pill.long  { background: rgba(38,166,154,.1); color: var(--long); }
   .sig-pill.short { background: rgba(239,83,80,.1);  color: var(--short); }
 
+  /* MARKET HEALTH */
+  .health-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  }
+  .health-state {
+    font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 4px; letter-spacing: .5px;
+  }
+  .health-state.TRENDING  { background: rgba(38,166,154,.15); color: var(--long); border: 1px solid var(--long); }
+  .health-state.MIXED     { background: rgba(240,185,11,.15); color: var(--yellow); border: 1px solid var(--yellow); }
+  .health-state.RANGING   { background: rgba(239,83,80,.15);  color: var(--short); border: 1px solid var(--short); }
+  .health-stat { font-size: 12px; color: var(--muted); }
+  .health-stat b { color: var(--text); }
+  .watchlist-wrap { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  .watch-chip {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 8px; font-size: 11px; color: var(--muted);
+  }
+  .watch-chip b { color: var(--text); }
+  .watch-chip.hot { border-color: var(--yellow); }
+  .watch-chip.hot b { color: var(--yellow); }
+
   /* EMPTY */
   .empty { padding: 40px; text-align: center; color: var(--muted); }
 
@@ -299,6 +335,18 @@
     <option value="symbol">Symbol A–Z</option>
   </select>
   <span class="tb-right" id="scan-timer">Next refresh in 30s</span>
+  <button class="warn-btn" onclick="showSignalLog()" style="margin-left:auto">Signal History Log</button>
+</div>
+
+<!-- SIGNAL LOG MODAL -->
+<div id="log-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;overflow:auto;padding:40px 20px">
+  <div style="background:#131722;border:1px solid #2a2e39;border-radius:8px;max-width:800px;margin:0 auto;padding:24px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-weight:700;font-size:14px;color:#f0b90b">Signal &amp; Outcome Log</span>
+      <button onclick="document.getElementById('log-modal').style.display='none'" style="background:none;border:none;color:#5d6073;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <pre id="log-content" style="font-size:11px;color:#d1d4dc;white-space:pre-wrap;line-height:1.6;max-height:60vh;overflow:auto">Loading...</pre>
+  </div>
 </div>
 
 <!-- SETTINGS BAR -->
@@ -321,7 +369,23 @@
   </button>
 </div>
 
+<!-- MARKET HEALTH BAR -->
+<div class="health-bar" id="health-bar">
+  <span class="health-state RANGING" id="mkt-state">RANGING</span>
+  <span class="health-stat">Avg ADX <b id="mkt-adx">—</b></span>
+  <span class="health-stat">Coins trending (ADX≥30) <b id="mkt-above30">—</b> / 100</span>
+  <span class="health-stat" style="color:var(--muted);font-size:11px">Need ≥10 for TRENDING</span>
+  <div class="watchlist-wrap" id="mkt-watchlist"></div>
+</div>
+
 <main>
+  <!-- PENDING CONFIRMATION -->
+  <div class="sec-label pending-sec" id="pending-section" style="display:none;margin-bottom:10px">
+    Awaiting Confirmation (Next Scan)
+    <span class="sec-count" id="badge-pending">0</span>
+  </div>
+  <div class="cards-grid" id="pending-grid" style="margin-bottom:24px"></div>
+
   <!-- MONITORING / OPEN POSITIONS -->
   <div class="sec-label monitoring">
     Open Positions (Monitoring)
@@ -386,12 +450,59 @@
     if (!iso) return '—';
     return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   }
+  function tsPKT(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-PK', {
+      timeZone: 'Asia/Karachi',
+      month:  'short', day: 'numeric',
+      hour:   '2-digit', minute: '2-digit',
+      hour12: true,
+    });
+  }
   function toast(msg, err=false) {
     const el = document.getElementById('toast');
     el.textContent = msg;
     el.style.borderLeftColor = err ? '#ef5350' : '#26a69a';
     el.classList.add('show');
     setTimeout(() => el.classList.remove('show'), 3000);
+  }
+
+  // ── Render pending confirmation cards ──────────────────
+  function renderPending(pending) {
+    const section = document.getElementById('pending-section');
+    const grid    = document.getElementById('pending-grid');
+    if (!pending.length) { section.style.display = 'none'; grid.innerHTML = ''; return; }
+    section.style.display = 'flex';
+    document.getElementById('badge-pending').textContent = pending.length;
+    grid.innerHTML = pending.map(s => {
+      const dir = s.signal || (s.signal_direction);
+      if (!dir || !['LONG','SHORT'].includes(dir)) return '';
+      const cls = dir.toLowerCase();
+      return `
+      <div class="card ${cls} pending">
+        <div class="card-bar"></div>
+        <div class="card-body">
+          <div class="card-head">
+            <div>
+              <div class="sym">${(s.symbol||'').split('/')[0]}</div>
+              <div class="sym-sub">USDT Perpetual</div>
+            </div>
+            <div class="badge-wrap">
+              <span class="pos-pill">${dir}</span>
+              <span class="conf-pct">${s.confidence||0}%</span>
+            </div>
+          </div>
+          <div class="pending-badge"><span class="blink">⏳</span> WAITING FOR CONFIRMATION — fires next scan (~5 min)</div>
+          <div class="price-grid" style="margin-top:8px">
+            <div class="price-cell"><div class="pc-label">Entry Est.</div><div class="pc-val entry">${fmt(s.entry)}</div></div>
+            <div class="price-cell"><div class="pc-label">TP1 Est.</div><div class="pc-val tp">${fmt(s.tp1)}</div></div>
+            <div class="price-cell"><div class="pc-label">TP2 Est.</div><div class="pc-val tp">${fmt(s.tp2)}</div></div>
+            <div class="price-cell"><div class="pc-label">SL Est.</div><div class="pc-val sl">${fmt(s.sl)}</div></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">ADX ${s.adx!=null?s.adx.toFixed(1):'—'} · RSI ${s.rsi!=null?s.rsi.toFixed(1):'—'}</div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   // ── Render active monitoring cards ─────────────────────
@@ -424,7 +535,7 @@
       const macdCls  = (s.macd_cross==='BULL_CROSS'||s.macd_cross==='BULL') ? 'bull' : 'bear';
       const frSign   = (s.funding_rate||0) > 0 ? '+' : '';
       const oiCls    = s.oi_rising ? 'bull' : (s.oi_change_pct < -0.1 ? 'bear' : '');
-      const openedAt = ts(s.open_time || s.timestamp);
+      const openedAt = tsPKT(s.open_time || s.timestamp);
       const reasons  = (s.reasons||[]).map(r=>`<div class="rsn">${r}</div>`).join('');
 
       return `
@@ -442,7 +553,7 @@
             </div>
           </div>
 
-          <div class="monitor-badge"><span class="pulse-dot"></span> MONITORING since ${openedAt}</div>
+          <div class="monitor-badge"><span class="pulse-dot"></span> Opened ${openedAt} PKT</div>
 
           <div class="conf-bar"><div class="conf-fill" style="width:${s.confidence}%"></div></div>
 
@@ -502,8 +613,9 @@
       const res  = await fetch('/api/signals');
       const data = await res.json();
 
-      activeSignals = data.active || [];
-      closedSignals = data.closed || [];
+      activeSignals = data.active  || [];
+      closedSignals = data.closed  || [];
+      renderPending(data.pending || []);
       const perf    = data.performance || {};
 
       document.getElementById('cnt-active').textContent  = perf.active  ?? 0;
@@ -527,6 +639,20 @@
 
       render();
       renderClosed(closedSignals);
+
+      const mh = data.market_health || {};
+      if (mh.state) {
+        const stateEl = document.getElementById('mkt-state');
+        stateEl.textContent = mh.state;
+        stateEl.className = 'health-state ' + mh.state;
+        document.getElementById('mkt-adx').textContent     = mh.avg_adx ?? '—';
+        document.getElementById('mkt-above30').textContent = mh.above_30 ?? '—';
+        const wl = document.getElementById('mkt-watchlist');
+        wl.innerHTML = (mh.watchlist || []).map(w => {
+          const hot = w.adx >= 28;
+          return `<div class="watch-chip${hot?' hot':''}"><b>${w.symbol}</b> ${w.adx}</div>`;
+        }).join('');
+      }
     } catch(e) { console.error(e); }
   }
 
@@ -583,6 +709,18 @@
       st.className = 'toggle-status ' + (enabled ? 'on' : 'off');
       toast(enabled ? 'Telegram alerts enabled' : 'Telegram alerts disabled');
     } catch(e) { toast('Failed to update setting', true); }
+  }
+
+  async function showSignalLog() {
+    document.getElementById('log-modal').style.display = 'block';
+    document.getElementById('log-content').textContent = 'Loading...';
+    try {
+      const res  = await fetch('/api/logs/signals');
+      const data = await res.json();
+      const lines = data.logs || [];
+      document.getElementById('log-content').textContent =
+        lines.length ? lines.join('') : 'No signals or outcomes found in log yet.';
+    } catch { document.getElementById('log-content').textContent = 'Failed to load.'; }
   }
 
   async function expireOld() {

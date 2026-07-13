@@ -16,6 +16,8 @@ last_scan_time: str | None = None
 is_scanning: bool = False
 scan_errors: list = []
 _sent_cache: set = set()
+market_health: dict = {}
+_pending: dict = {}  # symbol -> direction — waits for 2nd consecutive confirmation
 
 
 def run_scan() -> None:
@@ -64,23 +66,32 @@ def run_scan() -> None:
                 sym_short = symbol.split('/')[0]
 
                 if signal['signal'] in ('LONG', 'SHORT'):
-                    log.info(f"  *** {sym_short} {signal['signal']} | conf={signal['confidence']}% | "
-                             f"entry={signal['entry']} tp1={signal['tp1']} sl={signal['sl']} | "
-                             f"rsi={signal['rsi']:.1f} adx={signal['adx']:.1f} bb={signal.get('bb_position', 0):.2f} bw={signal.get('bb_bandwidth', 0):.3f} | "
-                             f"reasons: {' / '.join(signal['reasons'])}")
+                    direction = signal['signal']
+                    if _pending.get(symbol) == direction:
+                        # Confirmed across 2 consecutive scans — enter
+                        _pending.pop(symbol, None)
+                        log.info(f"  *** {sym_short} {direction} CONFIRMED | conf={signal['confidence']}% | "
+                                 f"entry={signal['entry']} tp1={signal['tp1']} sl={signal['sl']} | "
+                                 f"rsi={signal['rsi']:.1f} adx={signal['adx']:.1f} bb={signal.get('bb_position', 0):.2f} | "
+                                 f"reasons: {' / '.join(signal['reasons'])}")
 
-                    from signal_tracker import active_signals as _active
-                    is_new = symbol not in _active
-                    if is_new:
-                        add_signal(signal)
-                        signals_history.appendleft(dict(signal))
+                        from signal_tracker import active_signals as _active
+                        is_new = symbol not in _active
+                        if is_new:
+                            add_signal(signal)
+                            signals_history.appendleft(dict(signal))
 
-                    cache_key = f"{symbol}|{signal['signal']}"
-                    if cache_key not in _sent_cache:
-                        if send_signal(signal):
-                            _sent_cache.add(cache_key)
-                            new_alerts += 1
+                        cache_key = f"{symbol}|{direction}"
+                        if cache_key not in _sent_cache:
+                            if send_signal(signal):
+                                _sent_cache.add(cache_key)
+                                new_alerts += 1
+                    else:
+                        # First time seeing this signal — stage it, wait for next scan
+                        _pending[symbol] = direction
+                        log.info(f"  [staged] {sym_short} {direction} conf={signal['confidence']}% — waiting for confirmation")
                 else:
+                    _pending.pop(symbol, None)  # Reset if signal disappears
                     log.info(f"  {sym_short} NO TRADE — {signal['reasons'][0]}")
 
                 time.sleep(0.4)
@@ -103,7 +114,23 @@ def run_scan() -> None:
         last_scan_time = datetime.now().isoformat()
         long_c  = sum(1 for s in signals_store.values() if s['signal'] == 'LONG')
         short_c = sum(1 for s in signals_store.values() if s['signal'] == 'SHORT')
-        log.info(f"=== Scan done — {long_c} LONG, {short_c} SHORT, {new_alerts} alerts sent ===")
+
+        # Market health snapshot
+        all_adx = [(s['symbol'].split('/')[0], s.get('adx', 0)) for s in signals_store.values() if s.get('adx')]
+        all_adx.sort(key=lambda x: x[1], reverse=True)
+        adx_values = [v for _, v in all_adx]
+        avg_adx = round(sum(adx_values) / len(adx_values), 1) if adx_values else 0
+        above_30 = sum(1 for v in adx_values if v >= 30)
+        state = 'TRENDING' if above_30 >= 10 else ('MIXED' if above_30 >= 3 else 'RANGING')
+        market_health.update({
+            'avg_adx':    avg_adx,
+            'above_30':   above_30,
+            'state':      state,
+            'watchlist':  [{'symbol': s, 'adx': round(v, 1)} for s, v in all_adx[:8]],
+        })
+
+        log.info(f"=== Scan done — {long_c} LONG, {short_c} SHORT, {new_alerts} alerts sent | "
+                 f"Market: {state} avg_adx={avg_adx} coins_trending={above_30} ===")
 
         if len(_sent_cache) > 500:
             _sent_cache.clear()

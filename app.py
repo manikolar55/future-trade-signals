@@ -32,7 +32,13 @@ def get_signals():
         'long_count':  long_count,
         'short_count': short_count,
         'no_trade_count': len(all_signals) - long_count - short_count,
-        'errors':      scanner.scan_errors[-5:],
+        'errors':        scanner.scan_errors[-5:],
+        'market_health': scanner.market_health,
+        'pending':       [
+            {**scanner.signals_store[s], 'symbol': s}
+            for s in scanner._pending
+            if s in scanner.signals_store
+        ],
     })
 
 
@@ -64,7 +70,19 @@ def get_logs():
     try:
         with open('scanner.log', 'r') as f:
             lines = f.readlines()
-        return jsonify({'logs': lines[-200:]})
+        return jsonify({'logs': lines[-1000:]})
+    except FileNotFoundError:
+        return jsonify({'logs': []})
+
+
+@app.route('/api/logs/signals')
+def get_signal_logs():
+    """Return only lines that contain actual signals, wins, or losses."""
+    try:
+        with open('scanner.log', 'r') as f:
+            lines = f.readlines()
+        signal_lines = [l for l in lines if any(k in l for k in ('***', '→ WIN', '→ LOSS', 'EXPIRED', 'reset'))]
+        return jsonify({'logs': signal_lines[-200:]})
     except FileNotFoundError:
         return jsonify({'logs': []})
 

@@ -217,11 +217,11 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
     adx   = a15['adx']
 
     # ADX gate — require meaningful, strengthening trend
-    if adx < 28:
+    if adx < 30:
         return _no_trade(symbol, a15, a5,
                          f"ADX {adx:.1f} — ranging market, no trade",
                          funding_rate, oi)
-    if not a15.get('adx_rising') and adx < 35:
+    if not a15.get('adx_rising') and adx < 38:
         return _no_trade(symbol, a15, a5,
                          f"ADX {adx:.1f} declining — trend weakening, no trade",
                          funding_rate, oi)
@@ -274,23 +274,42 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
                          "OBV bullish divergence — price falling without volume, SHORT blocked",
                          funding_rate, oi)
 
-    # 4H trend filter
+    # 4H trend filter — REQUIRE full alignment, not just block opposite
     if a4h is not None:
         h4_bullish = a4h['ema9'] > a4h['ema21'] and a4h['ema21'] > a4h['ema50']
         h4_bearish = a4h['ema9'] < a4h['ema21'] and a4h['ema21'] < a4h['ema50']
-        if h4_bearish and long_score > short_score:
-            return _no_trade(symbol, a15, a5, "4H bearish — LONG blocked", funding_rate, oi)
-        if h4_bullish and short_score > long_score:
-            return _no_trade(symbol, a15, a5, "4H bullish — SHORT blocked", funding_rate, oi)
+        if long_score > short_score and not h4_bullish:
+            return _no_trade(symbol, a15, a5,
+                             "4H not fully bullish — LONG requires clear 4H uptrend",
+                             funding_rate, oi)
+        if short_score > long_score and not h4_bearish:
+            return _no_trade(symbol, a15, a5,
+                             "4H not fully bearish — SHORT requires clear 4H downtrend",
+                             funding_rate, oi)
 
-    # 1H trend filter
+    # 1H trend filter — REQUIRE full alignment, not just block opposite
     if a1h is not None:
         h1_bullish = a1h['ema9'] > a1h['ema21'] and a1h['ema21'] > a1h['ema50']
         h1_bearish = a1h['ema9'] < a1h['ema21'] and a1h['ema21'] < a1h['ema50']
-        if h1_bearish and long_score > short_score:
-            return _no_trade(symbol, a15, a5, "1H bearish — LONG blocked", funding_rate, oi)
-        if h1_bullish and short_score > long_score:
-            return _no_trade(symbol, a15, a5, "1H bullish — SHORT blocked", funding_rate, oi)
+        if long_score > short_score and not h1_bullish:
+            return _no_trade(symbol, a15, a5,
+                             "1H not fully bullish — LONG requires clear 1H uptrend",
+                             funding_rate, oi)
+        if short_score > long_score and not h1_bearish:
+            return _no_trade(symbol, a15, a5,
+                             "1H not fully bearish — SHORT requires clear 1H downtrend",
+                             funding_rate, oi)
+
+        # 1H RSI confirmation — must agree with direction
+        h1_rsi = a1h['rsi']
+        if long_score > short_score and h1_rsi < 45:
+            return _no_trade(symbol, a15, a5,
+                             f"1H RSI {h1_rsi:.1f} — not bullish enough for LONG",
+                             funding_rate, oi)
+        if short_score > long_score and h1_rsi > 58:
+            return _no_trade(symbol, a15, a5,
+                             f"1H RSI {h1_rsi:.1f} — not bearish enough for SHORT",
+                             funding_rate, oi)
 
     # Hard momentum gate — must have at least one real momentum signal
     if long_score > short_score:
@@ -343,15 +362,15 @@ def generate_signal(symbol: str, df_15m, df_5m=None, df_1h=None, df_4h=None,
 
     if long_score > short_score and long_score >= min_confidence:
         return _build('LONG', long_score, long_reasons,
-                      sl=price - atr * 2.0,
-                      tp1=price + atr * 3.0,
-                      tp2=price + atr * 5.0)
+                      sl=price - atr * 1.5,
+                      tp1=price + atr * 2.0,
+                      tp2=price + atr * 4.0)
 
     if short_score > long_score and short_score >= min_confidence:
         return _build('SHORT', short_score, short_reasons,
-                      sl=price + atr * 2.0,
-                      tp1=price - atr * 3.0,
-                      tp2=price - atr * 5.0)
+                      sl=price + atr * 1.5,
+                      tp1=price - atr * 2.0,
+                      tp2=price - atr * 4.0)
 
     return _no_trade(symbol, a15, a5,
                      f"Confidence below {min_confidence}% — skipped",
