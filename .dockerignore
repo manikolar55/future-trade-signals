@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.log
+.env
+.git/
+.idea/
+scan_output.log
+data.json
+settings.json
